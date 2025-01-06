@@ -3,3 +3,6 @@
 @import "tailwindcss/utilities";
 
 /* This file is for your main application CSS */
+.bg-elixir-phoenix-gradient {
+    background: linear-gradient(to bottom right, #4B275F, #FF6600);
+  }

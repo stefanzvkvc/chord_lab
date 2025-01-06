@@ -12,7 +12,7 @@ config :chord_lab, ChordLabWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4000],
   check_origin: false,
   code_reloader: true,
-  debug_errors: true,
+  debug_errors: false,
   secret_key_base: "IA+JQfvxVPsBFYDo0YztrFgWFgzTM6KzRAs1WnF0VOXusdbeX7RUCmTdJr207Bs3",
   watchers: [
     esbuild: {Esbuild, :install_and_run, [:chord_lab, ~w(--sourcemap=inline --watch)]},

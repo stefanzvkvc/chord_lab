@@ -13,6 +13,9 @@ defmodule ChordLab.Application do
       {Phoenix.PubSub, name: ChordLab.PubSub},
       # Start the Finch HTTP client for sending emails
       {Finch, name: ChordLab.Finch},
+      {Redix, {Application.fetch_env!(:redix, :url), name: :chord_redis}},
+      ChordLabWeb.Presence,
+      {Registry, keys: :unique, name: ChordLab.Registry},
       # Start a worker by calling: ChordLab.Worker.start_link(arg)
       # {ChordLab.Worker, arg},
       # Start to serve requests, typically the last entry
