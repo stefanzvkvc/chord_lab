@@ -56,25 +56,25 @@ defmodule ChordLabWeb.Components.SidebarComponent do
           <%= for online_user <- @online_users do %>
             <li
               phx-click="start_chat"
-              phx-value-participant={online_user}
+              phx-value-participant={online_user.username}
               class={[
                 "flex items-center justify-between p-4 rounded-lg hover:bg-gray-700/40 transition cursor-pointer bg-gray-800/40"
               ]}
             >
               <div class="flex items-center">
                 <div class="w-12 h-12 bg-purple-600 rounded-full flex items-center justify-center text-xl text-white font-bold">
-                  <%= String.slice(online_user, 0, 2) %>
+                  <%= String.slice(online_user.username, 0, 2) %>
                 </div>
                 <div class="ml-4">
-                  <p class="font-semibold text-white"><%= online_user %></p>
-                  <p class="text-sm text-gray-400">Online</p>
+                  <p class="font-semibold text-white"><%= online_user.username %></p>
+                  <p class="text-sm text-gray-400"><%= online_user.status %></p>
                 </div>
               </div>
               <div class="flex items-center space-x-2">
-                <div class="w-4 h-4 bg-green-500 rounded-full"></div>
-                <%= if Map.get(@unread_messages, online_user, 0) > 0 do %>
+                <div class={["w-4 h-4 rounded-full", online_user.status == "online" && "bg-green-500", online_user.status == "offline" && "bg-gray-500"]}></div>
+                <%= if Map.get(@unread_messages, online_user.username, 0) > 0 do %>
                   <div class="text-xs bg-red-500 text-white rounded-full px-2 py-1">
-                    <%= Map.get(@unread_messages, online_user) %>
+                    <%= Map.get(@unread_messages, online_user.username) %>
                   </div>
                 <% end %>
               </div>

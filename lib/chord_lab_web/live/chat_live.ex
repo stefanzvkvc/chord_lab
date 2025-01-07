@@ -23,6 +23,11 @@ defmodule ChordLabWeb.ChatLive do
       |> assign(:active_chat, %{id: nil, participant: nil})
       |> assign(:chats, %{})
       |> assign(:unread_messages, %{})
+      |> assign(:connection_lost, false)
+      |> assign(
+        :connection_lost_timer,
+        Application.get_env(:chord_lab, :connection_lost_timer, 10_000)
+      )
 
     if connected?(socket) do
       subscribe_to_presence_changes()
@@ -32,10 +37,14 @@ defmodule ChordLabWeb.ChatLive do
   end
 
   def handle_event("set_username", %{"username" => username}, socket) do
-    %{chats: chats} = socket.assigns
+    %{chats: chats, online_users: online_users} = socket.assigns
     track_user_presence(username)
     subscribe_to_public_channel()
-    subscribe_to_private_chats(username, list_online_users())
+
+    online_users
+    |> Enum.map(& &1.username)
+    |> subscribe_to_private_chats(username)
+
     chats = Manager.sync(chats, @public_channel_topic, nil)
 
     {:noreply,
@@ -82,7 +91,7 @@ defmodule ChordLabWeb.ChatLive do
     socket = assign(socket, chats: chats)
 
     Phoenix.PubSub.broadcast_from(ChordLab.PubSub, self(), chat_id, {:delta, delta})
-    {:noreply, socket}
+    {:noreply, push_event(socket, "clear_input", %{})}
   end
 
   def handle_event("select_channel", %{"channel" => channel}, socket) do
@@ -115,11 +124,32 @@ defmodule ChordLabWeb.ChatLive do
   end
 
   def handle_event("simulate_connection_loss", _params, socket) do
-    {:noreply, push_event(socket, "simulate_connection_loss", %{})}
+    %{user: %{username: username}, connection_lost_timer: timer} = socket.assigns
+    socket = assign(socket, connection_lost: true)
+    Presence.update(self(), @presence_topic, username, %{status: "offline"})
+
+    {:noreply, push_event(socket, "simulate_connection_loss", %{timer: timer})}
+  end
+
+  def handle_event("simulate_connection_restore", _params, socket) do
+    %{user: %{username: username}, chats: chats, active_chat: %{id: chat_id}} =
+      socket.assigns
+
+    client_version = get_latest_chat_version(chats, chat_id)
+    chats = Manager.sync(chats, chat_id, client_version)
+
+    Presence.update(self(), @presence_topic, username, %{status: "online"})
+    {:noreply, assign(socket, connection_lost: false, chats: chats)}
+  end
+
+  def handle_info({:delta, _delta}, %{assigns: %{connection_lost: true}} = socket) do
+    # Ignore delta updates when disconnected
+    {:noreply, socket}
   end
 
   def handle_info({:delta, delta}, socket) do
-    %{user: %{username: username}, chats: chats, active_chat: %{id: active_chat_id}} = socket.assigns
+    %{user: %{username: username}, chats: chats, active_chat: %{id: active_chat_id}} =
+      socket.assigns
 
     case Manager.handle_delta(chats, active_chat_id, delta) do
       {:active, updated_chats} ->
@@ -133,25 +163,16 @@ defmodule ChordLabWeb.ChatLive do
     end
   end
 
-  def handle_info(%{event: "presence_diff", payload: diff}, socket) do
-    %{user: %{username: username}} = socket.assigns
-
-    joins = Map.keys(diff.joins)
-    leaves = Map.keys(diff.leaves)
-
-    if username do
-      joins = Enum.reject(joins, &(&1 == username))
-      leaves = Enum.reject(leaves, &(&1 == username))
-      subscribe_to_private_chats(username, joins)
-      unsubscribe_from_private_chats(username, leaves)
-    end
+  def handle_info(%{event: "presence_diff", payload: %{joins: joins, leaves: leaves}}, socket) do
+    %{user: %{username: current_username}} = socket.assigns
 
     updated_online_users =
-      socket.assigns.online_users
-      |> Enum.concat(joins)
-      |> Enum.reject(&(&1 in leaves))
-      |> Enum.uniq()
-      |> Enum.reject(&(&1 == username))
+      Enum.reject(list_online_users(), fn %{username: username} ->
+        username == current_username
+      end)
+
+    if current_username, do: subscribe_to_private_chats(Map.keys(joins), current_username)
+    if current_username, do: unsubscribe_from_private_chats(Map.keys(leaves), current_username)
 
     {:noreply, assign(socket, online_users: updated_online_users)}
   end
@@ -165,6 +186,12 @@ defmodule ChordLabWeb.ChatLive do
   def render(assigns) do
     ~H"""
     <div class="min-h-screen flex flex-col md:flex-row bg-elixir-phoenix-gradient text-white">
+      <%= if @connection_lost do %>
+        <div class="fixed top-0 left-0 w-full bg-red-600 text-white text-center py-2 z-50">
+          <ChordLabWeb.CoreComponents.icon name="hero-arrow-path" class="animate-spin h-6 w-6" />
+          Connection lost, reconnecting...
+        </div>
+      <% end %>
       <!-- Username Modal -->
       <ModalComponent.render show_username_modal={@user[:username] == nil} />
       <!-- Sidebar -->
@@ -214,11 +241,13 @@ defmodule ChordLabWeb.ChatLive do
   defp list_online_users() do
     @presence_topic
     |> Presence.list()
-    |> Map.keys()
+    |> Enum.map(fn {username, %{metas: [%{status: status} | _]}} ->
+      %{username: username, status: status}
+    end)
   end
 
   defp track_user_presence(username) do
-    Presence.track(self(), @presence_topic, username, %{})
+    Presence.track(self(), @presence_topic, username, %{status: "online"})
   end
 
   defp subscribe_to_presence_changes() do
@@ -229,17 +258,21 @@ defmodule ChordLabWeb.ChatLive do
     Phoenix.PubSub.subscribe(ChordLab.PubSub, @public_channel_topic)
   end
 
-  defp subscribe_to_private_chats(username, users) do
-    Enum.each(users, fn user ->
-      chat_id = generate_chat_id(username, user)
-      Phoenix.PubSub.subscribe(ChordLab.PubSub, chat_id)
+  defp subscribe_to_private_chats(usernames, current_username) do
+    Enum.each(usernames, fn username ->
+      unless username == current_username do
+        chat_id = generate_chat_id(username, current_username)
+        Phoenix.PubSub.subscribe(ChordLab.PubSub, chat_id)
+      end
     end)
   end
 
-  defp unsubscribe_from_private_chats(username, users) do
-    Enum.each(users, fn user ->
-      chat_id = generate_chat_id(username, user)
-      Phoenix.PubSub.unsubscribe(ChordLab.PubSub, chat_id)
+  defp unsubscribe_from_private_chats(usernames, current_username) do
+    Enum.each(usernames, fn username ->
+      unless username == current_username do
+        chat_id = generate_chat_id(username, current_username)
+        Phoenix.PubSub.unsubscribe(ChordLab.PubSub, chat_id)
+      end
     end)
   end
 end

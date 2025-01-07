@@ -1,15 +1,13 @@
 defmodule ChordLab.Context.Manager do
   @moduledoc """
-  Acts as a decision-maker or router for context-related operations, whether stateful or stateless.
+  Wrapper around Chord for managing context synchronization and delta updates.
   """
   @initial_messages_state %{}
 
   # Public API
 
   def sync(chats, chat_id, client_version) do
-    result = Chord.sync_context(chat_id, client_version)
-
-    case result do
+    case Chord.sync_context(chat_id, client_version) do
       {:full_context, %{context: context, version: version}} ->
         update_chats(chats, chat_id, context.messages, version)
 
@@ -126,8 +124,4 @@ defmodule ChordLab.Context.Manager do
   defp create_message_payload(sender, message) do
     %{UUID.uuid1() => %{sender: sender, text: message, timestamp: DateTime.utc_now()}}
   end
-
-  # Architecture Helpers
-
-  # defp get_architecture, do: Application.get_env(:chord_lab, :architecture)
 end

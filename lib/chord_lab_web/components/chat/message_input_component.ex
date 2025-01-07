@@ -1,11 +1,11 @@
 defmodule ChordLabWeb.Components.Chat.MessageInputComponent do
-  use Phoenix.LiveComponent
+  use Phoenix.Component
   alias ChordLabWeb.CoreComponents
 
   def render(assigns) do
     ~H"""
     <div class="py-6">
-      <form phx-submit="send_message">
+      <form id="message-input" phx-submit="send_message" phx-hook="ResetInput">
         <div class="flex items-center bg-gray-700/40 rounded-lg overflow-hidden">
           <input
             type="text"

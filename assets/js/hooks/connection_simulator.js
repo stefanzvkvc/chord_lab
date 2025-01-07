@@ -1,16 +1,10 @@
 let ConnectionSimulator = {
   mounted() {
-    this.handleEvent("simulate_connection_loss", () => {
-      console.log("Simulating connection loss...");
-
-      // Disconnect the LiveSocket
-      this.liveSocket.disconnect();
-
-      // Reconnect after 15 seconds (simulate recovery)
+    this.handleEvent("simulate_connection_loss", ({timer: timer}) => {
+      // Simulate connection restoration after the specified timer
       setTimeout(() => {
-        console.log("Reconnecting...");
-        this.liveSocket.connect();
-      }, 15000); // Adjust the delay as needed
+        this.pushEvent("simulate_connection_restore", {});
+      }, timer);
     });
   }
 }

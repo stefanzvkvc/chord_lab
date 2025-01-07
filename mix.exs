@@ -1,15 +1,22 @@
 defmodule ChordLab.MixProject do
   use Mix.Project
 
+  @version "0.1.0"
+
   def project do
     [
       app: :chord_lab,
-      version: "0.1.0",
+      version: @version,
       elixir: "~> 1.14",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      docs: docs(),
+      package: package(),
+      name: "ChordLab",
+      description: description(),
+      source_url: "https://github.com/stefanzvkvc/chord_lab"
     ]
   end
 
@@ -56,9 +63,49 @@ defmodule ChordLab.MixProject do
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.5"},
       {:chord, "~> 0.1.2"},
-      { :uuid, "~> 1.1" },
+      {:uuid, "~> 1.1"},
       {:timex, "~> 3.7"}
     ]
+  end
+
+  defp package do
+    [
+      maintainers: ["Stefan Zivkovic"],
+      licenses: ["MIT"],
+      links: %{"GitHub" => "https://github.com/stefanzvkvc/chord_lab"},
+      categories: [
+        "Testing Tools",
+        "Real-Time Applications",
+        "LiveView Examples",
+        "Developer Tools"
+      ],
+      keywords: [
+        "elixir",
+        "phoenix liveview",
+        "chord",
+        "testing",
+        "real-time",
+        "state synchronization",
+        "chat application",
+        "delta sync",
+        "pubsub",
+        "collaboration tools"
+      ]
+    ]
+  end
+
+  defp docs do
+    [
+      main: "readme",
+      extras: ["README.md"],
+      source_ref: "v#{@version}"
+    ]
+  end
+
+  defp description do
+    """
+    ChordLab is a test tool for the Chord library. It currently supports testing chat functionality, with plans to support testing video calls, game sessions, and more in the future.
+    """
   end
 
   # Aliases are shortcuts or tasks specific to the current project.

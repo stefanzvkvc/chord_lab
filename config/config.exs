@@ -60,14 +60,9 @@ config :logger, :console,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-config :chord,
-  backend: Chord.Backend.Redis,
-  redis_client: :chord_redis
+config :chord, backend: Chord.Backend.ETS
 
-config :redix,
-  url: "redis://localhost:6379"
-
-config :chord_lab, :architecture, :stateless
+config :chord_lab, :connection_lost_timer, 10_000
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
