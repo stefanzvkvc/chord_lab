@@ -6,65 +6,65 @@ defmodule ChordLab.Context.Manager do
 
   # Public API
 
-  def sync(conversations, conversation_id, client_version) do
-    result = Chord.sync_context(conversation_id, client_version)
+  def sync(chats, chat_id, client_version) do
+    result = Chord.sync_context(chat_id, client_version)
     case result do
       {:full_context, %{context: context, version: version}} ->
-        update_conversations(conversations, conversation_id, context.messages, version)
+        update_chats(chats, chat_id, context.messages, version)
 
       {:delta, %{delta: delta, version: version}} ->
-        conversation_messages = get_messages_for_conversation(conversations, conversation_id)
+        chat_messages = get_chat_messages(chats, chat_id)
 
         updated_messages =
           delta
           |> Map.get(:messages, %{})
-          |> Enum.reduce(conversation_messages, &apply_delta/2)
+          |> Enum.reduce(chat_messages, &apply_delta/2)
 
-        update_conversations(conversations, conversation_id, updated_messages, version)
+        update_chats(chats, chat_id, updated_messages, version)
 
       {:no_change, _version} ->
-        conversations
+        chats
 
       {:error, :not_found} ->
         {:ok, %{context: result}} =
-          Chord.set_context(conversation_id, %{messages: @initial_messages_state})
+          Chord.set_context(chat_id, %{messages: @initial_messages_state})
 
-        update_conversations(
-          conversations,
-          conversation_id,
+        update_chats(
+          chats,
+          chat_id,
           result.context.messages,
           result.version
         )
     end
   end
 
-  def send_message(conversations, conversation_id, sender, message) do
+  def send_message(chats, chat_id, sender, message) do
     new_message = create_message_payload(sender, message)
 
     {:ok, %{context: updated, delta: delta}} =
-      Chord.update_context(conversation_id, %{messages: new_message})
+      Chord.update_context(chat_id, %{messages: new_message})
 
-    conversation_data = prepare_conversation_data(updated.context.messages, updated.version)
-    conversations = Map.put(conversations, conversation_id, conversation_data)
+    chat_data = prepare_chat_data(updated.context.messages, updated.version)
+    chats = Map.put(chats, chat_id, chat_data)
 
-    {conversations, delta}
+    {chats, delta}
   end
 
-  def handle_delta(conversations, active_conversation, delta) do
+  def handle_delta(chats, active_chat, delta) do
     %{
       version: version,
       delta: %{
         messages: messages
       },
-      context_id: conversation_id
+      context_id: chat_id
     } = delta
 
-    if active_conversation == conversation_id do
-      conversation_messages = get_messages_for_conversation(conversations, conversation_id)
+    if active_chat == chat_id do
+      chat_messages = get_chat_messages(chats, chat_id)
 
-      conversation_data =
+      chat_data =
         messages
-        |> Enum.reduce(conversation_messages, fn {message_id, message_data}, acc ->
+        |> Enum.reduce(chat_messages, fn {message_id, message_data}, acc ->
           case Map.get(message_data, :action) do
             :added ->
               message = Map.get(message_data, :value)
@@ -77,11 +77,11 @@ defmodule ChordLab.Context.Manager do
               acc
           end
         end)
-        |> prepare_conversation_data(version)
+        |> prepare_chat_data(version)
 
-      {:active, Map.put(conversations, conversation_id, conversation_data)}
+      {:active, Map.put(chats, chat_id, chat_data)}
     else
-      {:inactive, conversation_id, messages}
+      {:inactive, chat_id, messages}
     end
   end
 
@@ -101,16 +101,16 @@ defmodule ChordLab.Context.Manager do
     end
   end
 
-  defp update_conversations(conversations, conversation_id, messages, version) do
-    conversation_data = prepare_conversation_data(messages, version)
-    Map.put(conversations, conversation_id, conversation_data)
+  defp update_chats(chats, chat_id, messages, version) do
+    chat_data = prepare_chat_data(messages, version)
+    Map.put(chats, chat_id, chat_data)
   end
 
-  defp get_messages_for_conversation(conversations, conversation_id) do
-    conversations[conversation_id][:messages] || %{}
+  defp get_chat_messages(chats, chat_id) do
+    chats[chat_id][:messages] || %{}
   end
 
-  defp prepare_conversation_data(messages, version) do
+  defp prepare_chat_data(messages, version) do
     sorted_messages =
       messages
       |> Enum.sort_by(fn {_id, message} -> message.timestamp end)

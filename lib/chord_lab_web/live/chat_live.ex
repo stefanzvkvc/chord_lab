@@ -18,11 +18,12 @@ defmodule ChordLabWeb.ChatLive do
   def mount(_params, _session, socket) do
     socket =
       socket
-      |> assign(:online_users, list_online_users())
+      # sanitize usernames to avoid unexpected topic naming issues
       |> assign(:username, nil)
-      |> assign(:participant, nil)
-      |> assign(:active_conversation, nil)
-      |> assign(:conversations, %{})
+      |> assign(:online_users, list_online_users())
+      |> assign(:active_chat, nil)
+      |> assign(:active_participant, nil)
+      |> assign(:chats, %{})
       |> assign(:unread_messages, %{})
 
     if connected?(socket) do
@@ -33,43 +34,43 @@ defmodule ChordLabWeb.ChatLive do
   end
 
   def handle_event("set_username", %{"username" => username}, socket) do
-    %{conversations: conversations} = socket.assigns
+    %{chats: chats} = socket.assigns
     track_user_presence(username)
-    subscribe_to_public_conversation()
-    subscribe_to_private_conversations(username, list_online_users())
-    conversations = Manager.sync(conversations, @public_channel_topic, nil)
+    subscribe_to_public_channel()
+    subscribe_to_private_chats(username, list_online_users())
+    chats = Manager.sync(chats, @public_channel_topic, nil)
 
     {:noreply,
      assign(socket,
        username: username,
-       conversations: conversations,
-       active_conversation: @public_channel_topic
+       chats: chats,
+       active_chat: @public_channel_topic
      )}
   end
 
   def handle_event("start_chat", %{"participant" => participant}, socket) do
     %{
-      active_conversation: active_conversation,
+      active_chat: active_chat,
       username: username,
-      conversations: conversations,
+      chats: chats,
       unread_messages: unread_messages
     } = socket.assigns
 
-    conversation_id = generate_conversation_id(username, participant)
+    chat_id = generate_chat_id(username, participant)
 
-    if active_conversation == conversation_id do
+    if active_chat == chat_id do
       {:noreply, socket}
     else
-      client_version = get_latest_conversation_version(conversations, conversation_id)
+      client_version = get_latest_chat_version(chats, chat_id)
       unread_messages = Map.delete(unread_messages, participant)
-      conversations = Manager.sync(conversations, conversation_id, client_version)
+      chats = Manager.sync(chats, chat_id, client_version)
 
       socket =
         assign(socket,
-          active_conversation: conversation_id,
-          participant: participant,
+          active_chat: chat_id,
+          active_participant: participant,
           unread_messages: unread_messages,
-          conversations: conversations
+          chats: chats
         )
 
       {:noreply, socket}
@@ -77,36 +78,36 @@ defmodule ChordLabWeb.ChatLive do
   end
 
   def handle_event("send_message", %{"message" => message}, socket) do
-    %{active_conversation: conversation_id, username: sender, conversations: conversations} =
+    %{active_chat: chat_id, username: sender, chats: chats} =
       socket.assigns
 
-    {conversations, delta} = Manager.send_message(conversations, conversation_id, sender, message)
-    socket = assign(socket, conversations: conversations)
+    {chats, delta} = Manager.send_message(chats, chat_id, sender, message)
+    socket = assign(socket, chats: chats)
 
-    Phoenix.PubSub.broadcast_from(ChordLab.PubSub, self(), conversation_id, {:delta, delta})
+    Phoenix.PubSub.broadcast_from(ChordLab.PubSub, self(), chat_id, {:delta, delta})
     {:noreply, socket}
   end
 
   def handle_event("select_channel", %{"channel" => channel}, socket) do
     %{
-      active_conversation: active_conversation,
-      conversations: conversations,
+      active_chat: active_chat,
+      chats: chats,
       unread_messages: unread_messages
     } = socket.assigns
 
-    if active_conversation == channel do
+    if active_chat == channel do
       {:noreply, socket}
     else
-      client_version = get_latest_conversation_version(conversations, channel)
+      client_version = get_latest_chat_version(chats, channel)
       unread_messages = Map.delete(unread_messages, channel)
-      conversations = Manager.sync(conversations, channel, client_version)
+      chats = Manager.sync(chats, channel, client_version)
 
       socket =
         assign(socket,
-          active_conversation: channel,
-          conversations: conversations,
+          active_chat: channel,
+          chats: chats,
           unread_messages: unread_messages,
-          participant: nil
+          active_participant: nil
         )
 
       {:noreply, socket}
@@ -116,8 +117,8 @@ defmodule ChordLabWeb.ChatLive do
   def handle_event("leave_chat", _params, socket) do
     socket =
       socket
-      |> assign(active_conversation: @public_channel_topic)
-      |> assign(participant: nil)
+      |> assign(active_chat: @public_channel_topic)
+      |> assign(active_participant: nil)
 
     {:noreply, socket}
   end
@@ -127,14 +128,14 @@ defmodule ChordLabWeb.ChatLive do
   end
 
   def handle_info({:delta, delta}, socket) do
-    %{conversations: conversations, active_conversation: active_conversation} = socket.assigns
+    %{chats: chats, active_chat: active_chat} = socket.assigns
 
-    case Manager.handle_delta(conversations, active_conversation, delta) do
-      {:active, updated_conversations} ->
-        {:noreply, assign(socket, :conversations, updated_conversations)}
+    case Manager.handle_delta(chats, active_chat, delta) do
+      {:active, updated_chats} ->
+        {:noreply, assign(socket, :chats, updated_chats)}
 
-      {:inactive, conversation_id, messages} ->
-        from = extract_conversation_name(conversation_id, socket.assigns.username)
+      {:inactive, chat_id, messages} ->
+        from = extract_chat_name(chat_id, socket.assigns.username)
         unread_messages = update_unread_messages(socket.assigns.unread_messages, from)
 
         {:noreply, assign(socket, :unread_messages, unread_messages)}
@@ -150,8 +151,8 @@ defmodule ChordLabWeb.ChatLive do
     if username do
       joins = Enum.reject(joins, &(&1 == username))
       leaves = Enum.reject(leaves, &(&1 == username))
-      subscribe_to_private_conversations(username, joins)
-      unsubscribe_from_private_conversations(username, leaves)
+      subscribe_to_private_chats(username, joins)
+      unsubscribe_from_private_chats(username, leaves)
     end
 
     updated_online_users =
@@ -179,9 +180,9 @@ defmodule ChordLabWeb.ChatLive do
       <!-- Chat Window -->
       <div class="flex-1 flex flex-col p-6 h-screen">
         <!-- Header -->
-        <HeaderComponent.render header={extract_conversation_name(@active_conversation, @username)} participant={@participant} channel/>
+        <HeaderComponent.render header={extract_chat_name(@active_chat, @username)}/>
         <!-- Chat Messages -->
-        <MessagesComponent.render messages={@conversations[@active_conversation][:messages]} username={@username} />
+        <MessagesComponent.render messages={@chats[@active_chat][:messages]} username={@username} />
         <!-- Message Input -->
         <MessageInputComponent.render />
       </div>
@@ -189,24 +190,24 @@ defmodule ChordLabWeb.ChatLive do
     """
   end
 
-  defp get_latest_conversation_version(conversations, conversation_id) do
-    conversations[conversation_id][:version]
+  defp get_latest_chat_version(chats, chat_id) do
+    chats[chat_id][:version]
   end
 
-  defp generate_conversation_id(participant_1, participant_2) do
+  defp generate_chat_id(participant_1, participant_2) do
     [participant_1, participant_2]
     |> Enum.sort()
     |> Enum.join("-")
   end
 
-  defp extract_conversation_name(conversation_id, username) do
-    if conversation_id do
-      conversation_id
+  defp extract_chat_name(chat_id, username) do
+    if chat_id do
+      chat_id
       |> String.split("-")
       |> Enum.reject(&(&1 == username))
       |> case do
         [_, _] ->
-          conversation_id
+          chat_id
 
         [from] ->
           from
@@ -232,21 +233,21 @@ defmodule ChordLabWeb.ChatLive do
     Phoenix.PubSub.subscribe(ChordLab.PubSub, @presence_topic)
   end
 
-  defp subscribe_to_public_conversation() do
+  defp subscribe_to_public_channel() do
     Phoenix.PubSub.subscribe(ChordLab.PubSub, @public_channel_topic)
   end
 
-  defp subscribe_to_private_conversations(username, users) do
+  defp subscribe_to_private_chats(username, users) do
     Enum.each(users, fn user ->
-      conversation_id = generate_conversation_id(username, user)
-      Phoenix.PubSub.subscribe(ChordLab.PubSub, conversation_id)
+      chat_id = generate_chat_id(username, user)
+      Phoenix.PubSub.subscribe(ChordLab.PubSub, chat_id)
     end)
   end
 
-  defp unsubscribe_from_private_conversations(username, users) do
+  defp unsubscribe_from_private_chats(username, users) do
     Enum.each(users, fn user ->
-      conversation_id = generate_conversation_id(username, user)
-      Phoenix.PubSub.unsubscribe(ChordLab.PubSub, conversation_id)
+      chat_id = generate_chat_id(username, user)
+      Phoenix.PubSub.unsubscribe(ChordLab.PubSub, chat_id)
     end)
   end
 end

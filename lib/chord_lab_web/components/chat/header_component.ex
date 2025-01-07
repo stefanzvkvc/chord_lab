@@ -10,11 +10,6 @@ defmodule ChordLabWeb.Components.Chat.HeaderComponent do
         <button id="connection-simulator" phx-hook="ConnectionSimulator" phx-click="simulate_connection_loss" title="Simulate internet connection loss" class="p-2 bg-red-500 hover:bg-red-400 rounded-full transition">
           <CoreComponents.icon name="hero-signal-slash" class="w-6 h-6 text-white"/>
         </button>
-        <%= if @participant do %>
-          <button phx-click="leave_chat" title="Leave chat" class="p-2 bg-yellow-500 hover:bg-yellow-400 rounded-full transition">
-            <CoreComponents.icon name="hero-arrow-left-start-on-rectangle" class="w-6 h-6 text-white"/>
-          </button>
-        <% end %>
       </div>
     </div>
     """
