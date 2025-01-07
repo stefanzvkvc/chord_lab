@@ -8,6 +8,7 @@ defmodule ChordLab.Context.Manager do
 
   def sync(chats, chat_id, client_version) do
     result = Chord.sync_context(chat_id, client_version)
+
     case result do
       {:full_context, %{context: context, version: version}} ->
         update_chats(chats, chat_id, context.messages, version)
@@ -50,16 +51,16 @@ defmodule ChordLab.Context.Manager do
     {chats, delta}
   end
 
-  def handle_delta(chats, active_chat, delta) do
+  def handle_delta(chats, chat_id, delta) do
     %{
       version: version,
       delta: %{
         messages: messages
       },
-      context_id: chat_id
+      context_id: context_id
     } = delta
 
-    if active_chat == chat_id do
+    if chat_id == context_id do
       chat_messages = get_chat_messages(chats, chat_id)
 
       chat_data =
@@ -81,7 +82,7 @@ defmodule ChordLab.Context.Manager do
 
       {:active, Map.put(chats, chat_id, chat_data)}
     else
-      {:inactive, chat_id, messages}
+      {:inactive, context_id, messages}
     end
   end
 
