@@ -56,7 +56,8 @@ defmodule ChordLab.MixProject do
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.5"},
       {:chord, "~> 0.1.2"},
-      { :uuid, "~> 1.1" }
+      { :uuid, "~> 1.1" },
+      {:timex, "~> 3.7"}
     ]
   end
 
