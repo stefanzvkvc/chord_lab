@@ -1,4 +1,4 @@
-defmodule ChordLab.Context.Manager do
+defmodule ChordLab.Chat.Manager do
   @moduledoc """
   Wrapper around Chord for managing context synchronization and delta updates.
   """
@@ -63,19 +63,7 @@ defmodule ChordLab.Context.Manager do
 
       chat_data =
         messages
-        |> Enum.reduce(chat_messages, fn {message_id, message_data}, acc ->
-          case Map.get(message_data, :action) do
-            :added ->
-              message = Map.get(message_data, :value)
-              Map.put(acc, message_id, message)
-
-            ## TODO:
-            ## when action is modified, update message data
-            ## when action is removed, remove message from message state
-            _ ->
-              acc
-          end
-        end)
+        |> Enum.reduce(chat_messages, &apply_delta/2)
         |> prepare_chat_data(version)
 
       {:active, Map.put(chats, chat_id, chat_data)}
@@ -87,17 +75,18 @@ defmodule ChordLab.Context.Manager do
   # Private Helpers
 
   defp apply_delta({message_id, message_data}, acc) do
-    case Map.get(message_data, :action) do
-      :added ->
-        message = Map.get(message_data, :value)
-        Map.put(acc, message_id, message)
+    # TODO: Allow editing and deleting messages
+    text = message_data[:text][:value]
+    timestamp = message_data[:timestamp][:value]
+    sender = message_data[:sender][:value]
 
-      ## TODO:
-      ## when action is modified, update message data
-      ## when action is removed, remove message from message state
-      _ ->
-        acc
-    end
+    message = %{
+      text: text,
+      timestamp: timestamp,
+      sender: sender
+    }
+
+    Map.put(acc, message_id, message)
   end
 
   defp update_chats(chats, chat_id, messages, version) do
@@ -122,6 +111,12 @@ defmodule ChordLab.Context.Manager do
   end
 
   defp create_message_payload(sender, message) do
-    %{UUID.uuid1() => %{sender: sender, text: message, timestamp: DateTime.utc_now()}}
+    %{
+      UUID.uuid1() => %{
+        sender: sender,
+        text: message,
+        timestamp: DateTime.utc_now() |> DateTime.to_string()
+      }
+    }
   end
 end

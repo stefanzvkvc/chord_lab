@@ -1,6 +1,9 @@
 defmodule ChordLabWeb.Components.Chat.MessagesComponent do
   use Phoenix.Component
 
+  attr(:messages, :map, required: true)
+  attr(:username, :string, required: true)
+
   def render(assigns) do
     ~H"""
     <div id="messages-container" phx-hook="ScrollToLastMessage" class="flex-1 p-6 overflow-y-auto space-y-4 shadow-slate-500 bg-gray-800/40 rounded-lg">
@@ -30,9 +33,9 @@ defmodule ChordLabWeb.Components.Chat.MessagesComponent do
     """
   end
 
-  def format_timestamp(timestamp) do
+  defp format_timestamp(timestamp) do
     timestamp
-    |> DateTime.from_naive!("Etc/UTC")
+    |> Timex.parse!("{ISO:Extended:Z}")
     |> Timex.format!("{h12}:{m} {AM} - {YYYY}/{0M}/{0D}")
   end
 end

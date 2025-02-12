@@ -1,11 +1,12 @@
 defmodule ChordLabWeb.Components.ModalComponent do
   use Phoenix.Component
 
+  attr :show, :boolean, required: true
   def render(assigns) do
     ~H"""
-    <%= if @show_username_modal do %>
+    <%= if @show do %>
       <!-- Username Modal -->
-      <div class="fixed inset-0 flex items-center justify-center bg-gray-900/75">
+      <div class="fixed inset-0 flex items-center justify-center bg-gray-900/75 z-10">
         <div class="bg-gray-800 rounded-lg p-6 text-center w-96">
           <h2 class="text-2xl font-bold mb-4 text-white">Enter Your Username</h2>
           <form phx-submit="set_username">

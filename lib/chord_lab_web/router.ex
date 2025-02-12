@@ -19,6 +19,7 @@ defmodule ChordLabWeb.Router do
 
     get("/", PageController, :home)
     live("/chat", ChatLive, :lobby)
+    live("/audio-call", AudioCallLive, :lobby)
   end
 
   # Other scopes may use custom stacks.

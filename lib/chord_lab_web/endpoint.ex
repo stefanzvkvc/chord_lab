@@ -11,7 +11,7 @@ defmodule ChordLabWeb.Endpoint do
     same_site: "Lax"
   ]
 
-  socket "/live", Phoenix.LiveView.Socket,
+  socket "/live", ChordLabWeb.LiveSocket,
     websocket: [connect_info: [session: @session_options]],
     longpoll: [connect_info: [session: @session_options]]
 

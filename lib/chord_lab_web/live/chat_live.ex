@@ -2,14 +2,15 @@ defmodule ChordLabWeb.ChatLive do
   use Phoenix.LiveView
 
   alias ChordLabWeb.Presence
-  alias ChordLab.Context.Manager
+  alias ChordLab.Chat.Manager
+  alias ChordLabWeb.CoreComponents
 
   alias ChordLabWeb.Components.{
+    BannerComponent,
     SidebarComponent,
     ModalComponent,
-    Chat.HeaderComponent,
-    Chat.MessagesComponent,
-    Chat.MessageInputComponent
+    UsersComponent,
+    ChatComponent
   }
 
   @presence_topic "presence"
@@ -22,6 +23,7 @@ defmodule ChordLabWeb.ChatLive do
       |> assign(:online_users, list_online_users())
       |> assign(:active_chat, %{id: nil, participant: nil})
       |> assign(:chats, %{})
+      |> assign(:channels, [@public_channel_topic])
       |> assign(:unread_messages, %{})
       |> assign(:connection_lost, false)
       |> assign(
@@ -177,34 +179,59 @@ defmodule ChordLabWeb.ChatLive do
     {:noreply, assign(socket, online_users: updated_online_users)}
   end
 
-  def terminate(_reason, socket) do
-    %{user: %{username: username}} = socket.assigns
-    Presence.untrack(self(), @presence_topic, username)
+  def terminate(_reason, _socket) do
     :ok
   end
 
   def render(assigns) do
     ~H"""
     <div class="min-h-screen flex flex-col md:flex-row bg-elixir-phoenix-gradient text-white">
-      <%= if @connection_lost do %>
-        <div class="fixed top-0 left-0 w-full bg-red-600 text-white text-center py-2 z-50">
-          <ChordLabWeb.CoreComponents.icon name="hero-arrow-path" class="animate-spin h-6 w-6" />
-          Connection lost, reconnecting...
-        </div>
-      <% end %>
+      <!-- Banner -->
+      <BannerComponent.render connection_lost={@connection_lost} />
       <!-- Username Modal -->
-      <ModalComponent.render show_username_modal={@user[:username] == nil} />
+      <ModalComponent.render show={@user[:username] == nil} />
       <!-- Sidebar -->
-      <SidebarComponent.render header_title="The Chat Lab" online_users={@online_users} unread_messages={@unread_messages} />
-      <!-- Chat Window -->
-      <div class="flex-1 flex flex-col p-6 h-screen">
-        <!-- Header -->
-        <HeaderComponent.render header={extract_chat_name(@active_chat[:id], @user[:username])}/>
-        <!-- Chat Messages -->
-        <MessagesComponent.render messages={@chats[@active_chat[:id]][:messages]} username={@user[:username]} />
-        <!-- Message Input -->
-        <MessageInputComponent.render />
-      </div>
+      <SidebarComponent.render heading="The Chat Lab">
+        <:content>
+          <!-- Channels List -->
+          <.channels channels={@channels} unread_messages={@unread_messages} />
+          <!-- Users List -->
+          <UsersComponent.render current_user={@user.username} online_users={@online_users} unread_messages={@unread_messages} show_unread={true} service={:chat} />
+        </:content>
+      </SidebarComponent.render>
+      <!-- Chat -->
+      <ChatComponent.render heading={extract_chat_name(@active_chat[:id], @user[:username])} messages={@chats[@active_chat[:id]][:messages]} username={@user[:username]} />
+    </div>
+    """
+  end
+
+  attr(:channels, :map, required: true)
+  attr(:unread_messages, :map, required: true)
+
+  defp channels(assigns) do
+    ~H"""
+    <div class="mb-4">
+      <ul class="space-y-2">
+        <%= for channel_id <- @channels do %>
+          <li
+            phx-click="select_channel"
+            phx-value-channel={channel_id}
+            class="flex items-center justify-between p-4 rounded-lg bg-gray-800/40 hover:bg-gray-700/40 cursor-pointer transition"
+          >
+            <div class="flex items-center">
+              <CoreComponents.icon name="hero-hashtag" class="w-6 h-6 text-white"/>
+              <p class="font-semibold text-white ml-2">{channel_id}</p>
+            </div>
+            <%= if Map.get(@unread_messages, channel_id, 0) > 0 do %>
+              <div class="flex items-center">
+                <div class="text-xs bg-red-500 text-white rounded-full px-2 py-1">
+                  <%= Map.get(@unread_messages, channel_id) %>
+                </div>
+              </div>
+            <% end %>
+          </li>
+        <% end %>
+      </ul>
     </div>
     """
   end

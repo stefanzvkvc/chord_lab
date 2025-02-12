@@ -62,9 +62,10 @@ defmodule ChordLab.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.5"},
-      {:chord, "~> 0.1.2"},
+      {:chord, "~> 0.2.0"},
       {:uuid, "~> 1.1"},
-      {:timex, "~> 3.7"}
+      {:timex, "~> 3.7"},
+      {:websockex, "~> 0.4.3"}
     ]
   end
 

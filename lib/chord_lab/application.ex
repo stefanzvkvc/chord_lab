@@ -14,9 +14,8 @@ defmodule ChordLab.Application do
       # Start the Finch HTTP client for sending emails
       {Finch, name: ChordLab.Finch},
       ChordLabWeb.Presence,
-      # Start a worker by calling: ChordLab.Worker.start_link(arg)
-      # {ChordLab.Worker, arg},
-      # Start to serve requests, typically the last entry
+      {Registry, keys: :unique, name: ChordLab.Registry},
+      {DynamicSupervisor, name: ChordLab.DynamicSupervisor, strategy: :one_for_one},
       ChordLabWeb.Endpoint
     ]
 
