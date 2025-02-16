@@ -56,6 +56,26 @@ defmodule ChordLabWeb.AudioCallLive do
     {:noreply, push_event(socket, "call", payload)}
   end
 
+  def handle_event("accept_audio_call", _params, socket) do
+    %{active_call: %{call_id: call_id}} = socket.assigns
+    {:noreply, push_event(socket, "accept", %{call_id: call_id})}
+  end
+
+  def handle_event("accepted", _params, socket) do
+    %{user: %{username: username}, active_call: %{call_id: call_id}} = socket.assigns
+
+    socket = update_active_call(socket, "connected")
+
+    Presence.update(self(), @presence_topic, username, %{
+      status: "busy",
+      call: %{call_id: call_id, role: "callee", status: "connected"}
+    })
+
+    Phoenix.PubSub.broadcast_from(ChordLab.PubSub, self(), call_id, :accepted)
+
+    {:noreply, socket}
+  end
+
   def handle_event("ringing", call, socket) do
     %{user: %{username: username}} = socket.assigns
     %{"call_id" => call_id} = call
@@ -63,8 +83,7 @@ defmodule ChordLabWeb.AudioCallLive do
 
     Presence.update(self(), @presence_topic, username, %{
       status: "busy",
-      type: "caller",
-      call_id: call_id
+      call: %{call_id: call_id, role: "caller", status: "ringing"}
     })
 
     Phoenix.PubSub.broadcast_from(ChordLab.PubSub, self(), call_id, {:ringing, call})
@@ -83,8 +102,7 @@ defmodule ChordLabWeb.AudioCallLive do
 
     Presence.update(self(), @presence_topic, username, %{
       status: "online",
-      type: nil,
-      call_id: nil
+      call: %{role: nil, call_id: nil, status: nil}
     })
 
     Phoenix.PubSub.broadcast_from(ChordLab.PubSub, self(), call_id, :rejected)
@@ -101,8 +119,7 @@ defmodule ChordLabWeb.AudioCallLive do
 
     Presence.update(self(), @presence_topic, username, %{
       status: "online",
-      type: nil,
-      call_id: nil
+      call: %{role: nil, call_id: nil, status: nil}
     })
 
     Phoenix.PubSub.broadcast_from(ChordLab.PubSub, self(), call_id, :canceled)
@@ -116,8 +133,7 @@ defmodule ChordLabWeb.AudioCallLive do
 
     Presence.update(self(), @presence_topic, username, %{
       status: "busy",
-      type: "callee",
-      call_id: call_id
+      call: %{call_id: call_id, role: "callee", status: "ringing"}
     })
 
     {:noreply, socket}
@@ -133,8 +149,7 @@ defmodule ChordLabWeb.AudioCallLive do
 
     Presence.update(self(), @presence_topic, username, %{
       status: "online",
-      type: nil,
-      call_id: nil
+      call: %{role: nil, call_id: nil, status: nil}
     })
 
     {:noreply, socket}
@@ -146,11 +161,23 @@ defmodule ChordLabWeb.AudioCallLive do
 
     Presence.update(self(), @presence_topic, username, %{
       status: "online",
-      type: nil,
-      call_id: nil
+      call: %{role: nil, call_id: nil, status: nil}
     })
 
     ## TODO: push event to client to stop access to mic
+    {:noreply, socket}
+  end
+
+  def handle_info(:accepted, socket) do
+    %{user: %{username: username}, active_call: %{call_id: call_id}} = socket.assigns
+
+    socket = update_active_call(socket, "connected")
+
+    Presence.update(self(), @presence_topic, username, %{
+      status: "busy",
+      call: %{call_id: call_id, role: "caller", status: "connected"}
+    })
+
     {:noreply, socket}
   end
 
@@ -192,7 +219,7 @@ defmodule ChordLabWeb.AudioCallLive do
         </:content>
       </SidebarComponent.render>
       <!-- Audio Call -->
-      <AudioCallComponent.render current_user={@user.username} call_id={@active_call.call_id} caller={@active_call.caller.username} callee={@active_call.callee.username} status={@active_call.status}/>
+      <AudioCallComponent.render current_user={@user.username} active_call={@active_call}/>
     </div>
     """
   end
@@ -230,8 +257,7 @@ defmodule ChordLabWeb.AudioCallLive do
   defp track_user_presence(username) do
     Presence.track(self(), @presence_topic, username, %{
       status: "online",
-      type: nil,
-      call_id: nil
+      call: %{role: nil, call_id: nil, status: nil}
     })
   end
 
@@ -241,6 +267,22 @@ defmodule ChordLabWeb.AudioCallLive do
     |> Enum.join("-")
   end
 
+  defp update_active_call(socket, status) do
+    %{active_call: call} = socket.assigns
+    set_active_call(socket, call, status)
+  end
+
+  defp set_active_call(socket, call, status) do
+    assign(socket,
+      active_call: %{
+        call_id: call["call_id"] || call.call_id,
+        caller: %{username: call["caller"] || call.caller.username},
+        callee: %{username: call["callee"] || call.callee.username},
+        status: status
+      }
+    )
+  end
+
   defp reset_active_call(socket) do
     assign(socket,
       active_call: %{
@@ -248,19 +290,6 @@ defmodule ChordLabWeb.AudioCallLive do
         caller: %{username: nil},
         callee: %{username: nil},
         status: nil
-      }
-    )
-  end
-
-  defp set_active_call(socket, call, status) do
-    %{"call_id" => call_id, "caller" => caller, "callee" => callee} = call
-
-    assign(socket,
-      active_call: %{
-        call_id: call_id,
-        caller: %{username: caller},
-        callee: %{username: callee},
-        status: status
       }
     )
   end

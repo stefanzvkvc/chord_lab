@@ -83,8 +83,8 @@ defmodule ChordLab.Audio.Call.Peer do
   end
 
   def handle_continue(:audio_room_joined = response, state) do
-    %{channel_pid: channel_pid, janus: %{room_id: room_id}} = state
-    send(channel_pid, {response, room_id})
+    %{channel_pid: channel_pid} = state
+    send(channel_pid, response)
     {:noreply, state}
   end
 
@@ -96,6 +96,12 @@ defmodule ChordLab.Audio.Call.Peer do
 
   def handle_continue(:keepalive, state) do
     Process.send_after(self(), :keepalive, @keepalive_interval)
+    {:noreply, state}
+  end
+
+  def handle_continue({:sdp_answer, _jsep} = response, state) do
+    %{channel_pid: channel_pid} = state
+    send(channel_pid, response)
     {:noreply, state}
   end
 
@@ -142,13 +148,12 @@ defmodule ChordLab.Audio.Call.Peer do
     end
   end
 
-  def handle_info(:join_audio_room, state) do
+  def handle_info({:join_audio_room, call_id}, state) do
     %{
       janus: %{
         client_pid: client_pid,
         session_id: session_id,
-        handle_id: handle_id,
-        room_id: room_id
+        handle_id: handle_id
       }
     } =
       state
@@ -162,7 +167,11 @@ defmodule ChordLab.Audio.Call.Peer do
         handle_id: handle_id,
         body: %{
           request: :join,
-          room: room_id
+          room: generate_room_id(call_id),
+          volume: 100,
+          codec: "OPUS",
+          audio_level_average: 25,
+          audio_active_packets: 100
         },
         transaction: request_id
       }
@@ -205,6 +214,37 @@ defmodule ChordLab.Audio.Call.Peer do
     case Client.send_request(client_pid, request) do
       :ok ->
         state = put_in(state[:janus][:requests][request_id], :destroy_audio_room)
+        {:noreply, state}
+
+      {:error, reason} ->
+        {:stop, reason}
+    end
+  end
+
+  def handle_info({:sdp_offer, jsep}, state) do
+    %{janus: %{client_pid: client_pid, session_id: session_id, handle_id: handle_id}} =
+      state
+
+    request_id = create_request_id()
+
+    request =
+      %{
+        janus: :message,
+        session_id: session_id,
+        handle_id: handle_id,
+        body: %{
+          request: :configure
+        },
+        jsep: %{
+          type: jsep["type"],
+          sdp: jsep["sdp"]
+        },
+        transaction: request_id
+      }
+
+    case Client.send_request(client_pid, request) do
+      :ok ->
+        state = put_in(state[:janus][:requests][request_id], :configure)
         {:noreply, state}
 
       {:error, reason} ->
@@ -266,6 +306,9 @@ defmodule ChordLab.Audio.Call.Peer do
 
             {:noreply, state, next_action(request)}
 
+          {:configure, jsep} ->
+            {:noreply, state, next_action(request, jsep)}
+
           {:error, reason} ->
             {:stop, reason}
         end
@@ -276,13 +319,17 @@ defmodule ChordLab.Audio.Call.Peer do
         "janus" => "event",
         "plugindata" => %{"data" => %{"audiobridge" => "joined"}}
       }) do
-    :accept
+    :skip
   end
 
   def handle_event(%{
         "janus" => "event",
         "plugindata" => %{"data" => %{"audiobridge" => "destroyed"}}
       }) do
+    :skip
+  end
+
+  def handle_event(%{"janus" => "hangup", "reason" => _reason}) do
     :skip
   end
 
@@ -296,15 +343,15 @@ defmodule ChordLab.Audio.Call.Peer do
 
   defp handle_response(:create_audio_room, %{
          "janus" => "success",
-         "plugindata" => %{"data" => %{"audiobridge" => "created", "room" => room_id}}
+         "plugindata" => %{"data" => %{"audiobridge" => "created"}}
        }),
-       do: {:ok, room_id}
+       do: :ok
 
   defp handle_response(:join_audio_room, %{
          "janus" => "event",
-         "plugindata" => %{"data" => %{"audiobridge" => "joined"}}
+         "plugindata" => %{"data" => %{"audiobridge" => "joined", "room" => room_id}}
        }) do
-    :ok
+    {:ok, room_id}
   end
 
   defp handle_response(:destroy_audio_room, %{
@@ -312,6 +359,10 @@ defmodule ChordLab.Audio.Call.Peer do
          "plugindata" => %{"data" => %{"audiobridge" => "destroyed"}}
        }) do
     {:ok, nil}
+  end
+
+  defp handle_response(:configure, %{"janus" => "event", "jsep" => jsep}) do
+    {:configure, jsep}
   end
 
   defp handle_response(:keepalive, %{"janus" => "ack"}), do: :ok
@@ -342,7 +393,7 @@ defmodule ChordLab.Audio.Call.Peer do
     put_in(state[:janus][:handle_id], handle_id)
   end
 
-  defp update_state(:create_audio_room, room_id, state) do
+  defp update_state(:join_audio_room, room_id, state) do
     put_in(state[:janus][:room_id], room_id)
   end
 
@@ -356,7 +407,7 @@ defmodule ChordLab.Audio.Call.Peer do
   defp next_action(:join_audio_room), do: {:continue, :audio_room_joined}
   defp next_action(:destroy_audio_room), do: {:continue, :audio_room_destroyed}
   defp next_action(:keepalive), do: {:continue, :keepalive}
-  defp next_action(_), do: :noop
+  defp next_action(:configure, jsep), do: {:continue, {:sdp_answer, jsep}}
 
   defp via_tuple(id), do: {:via, Registry, {ChordLab.Registry, id}}
 

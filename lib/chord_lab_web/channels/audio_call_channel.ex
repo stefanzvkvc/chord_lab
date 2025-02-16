@@ -25,11 +25,11 @@ defmodule ChordLabWeb.AudioCallChannel do
   end
 
   @impl true
-  def handle_in("join_audio_room", _payload, socket) do
+  def handle_in("join_audio_room", %{"call_id" => call_id}, socket) do
     %{requests: requests, peer_pid: peer_pid} = socket.assigns
     requests = Map.put(requests, :join_audio_room, socket_ref(socket))
     socket = assign(socket, :requests, requests)
-    Task.start(fn -> send(peer_pid, :join_audio_room) end)
+    Task.start(fn -> send(peer_pid, {:join_audio_room, call_id}) end)
 
     {:noreply, socket}
   end
@@ -62,6 +62,13 @@ defmodule ChordLabWeb.AudioCallChannel do
   end
 
   @impl true
+  def handle_in("sdp_offer", %{"jsep" => jsep}, socket) do
+    %{peer_pid: pid} = socket.assigns
+    send(pid, {:sdp_offer, jsep})
+    {:reply, {:ok, %{}}, socket}
+  end
+
+  @impl true
   def handle_info({:after_join, payload}, socket) do
     %{"username" => username} = payload
     opts = [id: username, type: :peer, channel_pid: self()]
@@ -79,7 +86,7 @@ defmodule ChordLabWeb.AudioCallChannel do
   end
 
   @impl true
-  def handle_info({:audio_room_joined, _room_id}, socket) do
+  def handle_info(:audio_room_joined, socket) do
     %{requests: requests, call: call} = socket.assigns
     {ref, new_requests} = pop_in(requests, [:join_audio_room])
     reply(ref, {:ok, call})
@@ -92,5 +99,11 @@ defmodule ChordLabWeb.AudioCallChannel do
     {ref, new_requests} = pop_in(requests, [:destroy_audio_room])
     reply(ref, {:ok, %{}})
     {:noreply, assign(socket, requests: new_requests, call: %{})}
+  end
+
+  @impl true
+  def handle_info({:sdp_answer, jsep}, socket) do
+    push(socket, "sdp_answer", %{jsep: jsep})
+    {:noreply, socket}
   end
 end

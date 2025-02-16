@@ -57,7 +57,7 @@ defmodule ChordLabWeb.Components.UsersComponent do
                           <CoreComponents.icon name="hero-phone" class="w-6 h-6 text-white" />
                         </div>
                       <% "busy" -> %>
-                        <%= if online_user.type == "caller" && online_user.call_id == @call_id do %>
+                        <%= if online_user.call.role == "caller" && online_user.call.call_id == @call_id && online_user.call.status == "ringing" do %>
                           <div class="rounded-full ml-2 p-2 cursor-pointer shadow-slate-500 bg-gray-800/40 w-min" phx-click="accept_audio_call">
                             <CoreComponents.icon name="hero-phone" class="w-6 h-6 bg-green-500" />
                           </div>

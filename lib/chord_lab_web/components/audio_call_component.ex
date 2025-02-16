@@ -3,10 +3,7 @@ defmodule ChordLabWeb.Components.AudioCallComponent do
   alias ChordLabWeb.Components.AudioCall.{HeaderComponent, CallComponent}
 
   attr(:current_user, :string, required: true)
-  attr(:call_id, :string, required: true)
-  attr(:caller, :string, required: true)
-  attr(:callee, :string, required: true)
-  attr(:status, :string, required: true)
+  attr(:active_call, :map, required: true)
 
   def render(assigns) do
     ~H"""
@@ -14,7 +11,7 @@ defmodule ChordLabWeb.Components.AudioCallComponent do
       <!-- Header -->
       <HeaderComponent.render />
       <!-- Grid -->
-      <CallComponent.render current_user={@current_user} call_id={@call_id} caller={@caller} callee={@callee} status={@status}/>
+      <CallComponent.render current_user={@current_user} active_call={@active_call}/>
     </div>
     """
   end
